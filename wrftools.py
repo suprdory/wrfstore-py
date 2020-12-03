@@ -2,26 +2,29 @@ from netCDF4 import Dataset
 import numpy as np
 from datetime import datetime
 import os,glob
+import genutils as gu
 
 # top level function for getting np array from wrfout
 # searches cache for pre extracted raw vars, pre calced azim av, then creates if neccesary
 # force=True to force recalc, z=0 for surface, z='full' for all, z=[n1, n2,...] for model levels
-def getWRF(rname,woname,varin,type='raw',force=False,z=0,nlay=100,intlog=True):
+def getWRF(rname,woname,varin,vtype='raw',force=False,z=0,nlay=100,intlog=True):
     pydatadir='/net/wrfstore6/disk1/nsparks/itc/interm/'
     wrfdatadir='/net/wrfstore6/disk1/nsparks/itc/run/'
     # add surface suffix to var
     if z==0:
-        if varin in ['vt','vr','V','th']:
+        if varin in ['vt','vr','V','th','v','u']:
             var=varin+'10'
         if varin in ['P']:
             var=varin+'sfc'
         if varin in ['T']:
-            var=varin+'2'   
+            var=varin+'2'
+        if varin in ['cc']:
+            var=varin
     else:
         var=varin
     
-    # check if var,run,z,type exists. In not, create
-    gwname=woname + '.' + var + '.' + type + '.npy' #getWRF name
+    # check if var,run,z,vtype exists. In not, create
+    gwname=woname + '.' + var + '.' + vtype + '.npy' #getWRF name
     gwpath=os.path.join(pydatadir,rname,gwname)
     if (not os.path.exists(gwpath)) or force==True :
         print('Creating: ' + os.path.join(rname,gwname))
@@ -31,152 +34,159 @@ def getWRF(rname,woname,varin,type='raw',force=False,z=0,nlay=100,intlog=True):
         wrfoutpath=os.path.join(wrfdatadir,rname,woname)
         spath=os.path.join(sdir,woname)
 
-        if type=='raw':
+        if vtype=='raw':
             if z==0 and var in ['vt10', 'vr10', 'V10', 'th10']:
-                # print('raw, z==0, var in pol')
-                V10, vt10, vr10, th10=wrf2pol(wrfoutpath,'sfc')
-                np.save(spath + '.' + 'V10' + '.' + type, V10)
-                np.save(spath + '.' + 'vt10' + '.' + type, vt10)
-                np.save(spath + '.' + 'vr10' + '.' + type, vr10)
-                np.save(spath + '.' + 'th10' + '.' + type, th10)
+                lon0,lat0=getWRF(rname,woname,'cc',force=force)
+                V10, vt10, vr10, th10=wrf2pol(wrfoutpath,'sfc',lon0,lat0)
+                np.save(spath + '.' + 'V10' + '.' + vtype, V10)
+                np.save(spath + '.' + 'vt10' + '.' + vtype, vt10)
+                np.save(spath + '.' + 'vr10' + '.' + vtype, vr10)
+                np.save(spath + '.' + 'th10' + '.' + vtype, th10)
             elif z!=0 and var in ['vt', 'vr', 'V', 'th']:
-                # print('raw, z!=0, var in pol')
-                V, vt, vr, th=wrf2pol(wrfoutpath,'full')
-                np.save(spath + '.' + 'V' + '.' + type, V)
-                np.save(spath + '.' + 'vt' + '.' + type, vt)
-                np.save(spath + '.' + 'vr' + '.' + type, vr)
-                np.save(spath + '.' + 'th' + '.' + type, th)
-                
+                lon0,lat0=getWRF(rname,woname,'cc',force=force)
+                V, vt, vr, th=wrf2pol(wrfoutpath,'full',lon0,lat0)
+                np.save(spath + '.' + 'V' + '.' + vtype, V)
+                np.save(spath + '.' + 'vt' + '.' + vtype, vt)
+                np.save(spath + '.' + 'vr' + '.' + vtype, vr)
+                np.save(spath + '.' + 'th' + '.' + vtype, th)
+            
+            elif z==0 and var=='u10':
+                x=wrfout2var2d(wrfoutpath,'U10')
+                np.save(spath+ '.' + var + '.' +vtype, x)
+            elif z==0 and var=='v10':
+                x=wrfout2var2d(wrfoutpath,'V10')
+                np.save(spath+ '.' + var + '.' +vtype, x)
             elif z==0 and var=='T2':
                 T2=wrfout2var2d(wrfoutpath,'T2')
-                np.save(spath + '.' + 'T2' + '.' + type,T2)
+                np.save(spath + '.' + 'T2' + '.' + vtype,T2)
             elif z!=0 and var=='TH':
                 TH=wrfout2var3d(wrfoutpath,'T')+300  
-                np.save(spath + '.' + 'TH' + '.' + type,TH)
+                np.save(spath + '.' + 'TH' + '.' + vtype,TH)
             elif z!=0 and var=='T':
-                TH=getWRF(rname,woname,'TH',force=force,z='full',type='raw')
-                P=getWRF(rname,woname,'P',force=force,z='full',type='raw')
+                TH=getWRF(rname,woname,'TH',force=force,z='full',vtype='raw')
+                P=getWRF(rname,woname,'P',force=force,z='full',vtype='raw')
                 T=TH2T(TH,P)
-                np.save(spath + '.' + 'T' + '.' + type,T)   
-                
+                np.save(spath + '.' + 'T' + '.' + vtype,T)   
             elif z==0 and var=='Psfc':
-                # print('raw, z==0, var is P')
                 Psfc=wrf2P(wrfoutpath,'sfc')
-                np.save(spath + '.' + 'Psfc' + '.' + type ,Psfc)
+                np.save(spath + '.' + 'Psfc' + '.' + vtype ,Psfc)
             elif z!=0 and var=='P':
-                # print('raw, z!=0, var is P')
                 P=wrf2P(wrfoutpath,'full')
-                np.save(spath + '.' + 'P' + '.' + type,P)
+                np.save(spath + '.' + 'P' + '.' + vtype,P)
             elif z!=0 and var=='H':
                 H=wrfout2var3d(wrfoutpath,'PH')
                 HB=wrfout2var3d(wrfoutpath,'PHB')
-                np.save(spath + '.' + 'H' + '.' + type,(H+HB)/9.81)
+                np.save(spath + '.' + 'H' + '.' + vtype,(H+HB)/9.81)
+            elif z==0 and var=='cc': # cyclone centre indices
+                P=getWRF(rname,woname,'P',z=10) #~950hPa
+                xmin,ymin=np.unravel_index(P.argmin(),P.shape)
+                np.save(spath + '.' + var + '.' + vtype,(xmin,ymin))
             else:
                 print('Bad Raw Variable: ' + var)
         
-        elif type=='az':
+        elif vtype=='az':
             # print('az')
             if z==0:
                 zaz=0
             else:
                 zaz='full'
-            x=getWRF(rname,woname,varin,type='raw',force=force,z=zaz)
-            xaz,r=azimAv(x)
-            np.save(spath + '.' + var + '.' + type, xaz)
+            x=getWRF(rname,woname,varin,vtype='raw',force=force,z=zaz)
+            lon0,lat0=getWRF(rname,woname,'cc',force=force)
+            xaz,r=azimAv(x,lon0,lat0)
+            np.save(spath + '.' + var + '.' + vtype, xaz)
             
-        elif type=='pwcm': # pressure weighted column mean
+        elif vtype=='sm':
+            x=getWRF(rname,woname,varin,vtype='raw',force=force,z=z)
+#             print(type(x))
+            xsm=gu.smooth2d(x,6)
+#             print(type(xsm))
+            np.save(spath + '.' + var + '.' + vtype, xsm)
+            
+        elif vtype=='dwcm': # density weighted column mean
             assert(z=='full')
-            H=getWRF(rname,woname,'H',force=force,z='full',type='raw')
-            P=getWRF(rname,woname,'P',force=force,z='full',type='raw')
-            zd=np.diff(H,axis=2)/9.8
-            wgt=zd*P
-            x=getWRF(rname,woname,varin,type='raw',force=force,z='full')
-            wgtx=wgt*x
-            xpwcm=np.sum(wgtx,axis=2)/np.sum(wgt,axis=2)
-            np.save(spath+ '.' + var + '.' + type,xpwcm)
-        elif type=='dwcm': # density weighted column mean
-            assert(z=='full')
-            H=getWRF(rname,woname,'H',force=force,z='full',type='raw')
-            P=getWRF(rname,woname,'P',force=force,z='full',type='raw')
-            T=getWRF(rname,woname,'T',force=force,z='full',type='raw')
+            H=getWRF(rname,woname,'H',force=force,z='full',vtype='raw')
+            P=getWRF(rname,woname,'P',force=force,z='full',vtype='raw')
+            T=getWRF(rname,woname,'T',force=force,z='full',vtype='raw')
             zd=np.diff(H,axis=2)/9.8
             wgt=zd*P/T
-        elif type=='epcm': # equal pressure column mean
+            x=getWRF(rname,woname,varin,vtype='raw',force=force,z='full')
+            wgtx=wgt*x
+            xdwcm=np.sum(wgtx,axis=2)/np.sum(wgt,axis=2)
+            np.save(spath+ '.' + var + '.' + vtype,xdwcm)
+             
+        #pressure level height weighted column mean !!!
+        #this is the correct method for mass weighted column means
+        elif vtype=='dpwcm': 
             assert(z=='full')
-            P=getWRF(rname,woname,'P',force=force,z='full',type='raw')
-            Pi=equalPgrid(P,nlay)
-            x=getWRF(rname,woname,varin,type='raw',force=force,z='full')
-            xi=interpgrid2nP(x,P,Pi,intlog=intlog)
-            xepcm=np.sum(xi,axis=2)/xi.shape[2]
-            np.save(spath+ '.' + var + '.' + type,xepcm)   
-         
-        elif type=='dpwcm': #dp weighted column mean !!!this is the correct method for mass weighted column means
-            assert(z=='full')
-            P=getWRF(rname,woname,'P',force=force,z='full',type='raw')
-            x=getWRF(rname,woname,varin,type='raw',force=force,z='full')
+            P=getWRF(rname,woname,'P',force=force,z='full',vtype='raw')
+            x=getWRF(rname,woname,varin,vtype='raw',force=force,z='full')
             xc=np.sum(0.5*(x[:,:,:-1]+x[:,:,1:])*np.diff(P,axis=2),axis=2)/np.sum(np.diff(P,axis=2),axis=2)
-            np.save(spath+ '.' + var + '.' + type,xc)   
+            np.save(spath+ '.' + var + '.' + vtype,xc)   
             
-        elif type=='azpwcm':
+        elif vtype=='dpwsmcm': 
             assert(z=='full')
-            xpwcm=getWRF(rname,woname,varin,type='pwcm',force=force,z='full')
-            xaz,r=azimAv(xpwcm)
-            np.save(spath+ '.' + var + '.'+ type,xaz)   
+            P=getWRF(rname,woname,'P',force=force,z='full',vtype='raw')
+            x=getWRF(rname,woname,varin,vtype='sm',force=force,z='full')
+            xc=np.sum(0.5*(x[:,:,:-1]+x[:,:,1:])*np.diff(P,axis=2),axis=2)/np.sum(np.diff(P,axis=2),axis=2)
+            np.save(spath+ '.' + var + '.' + vtype,xc) 
             
-        elif type=='azdwcm':
+        elif vtype=='azdwcm':
             assert(z=='full')
-            xdwcm=getWRF(rname,woname,varin,type='dwcm',force=force,z='full')
-            xaz,r=azimAv(xdwcm)
-            np.save(spath+ '.' + var + '.'+ type,xaz)
-            
-        elif type=='azepcm':
-            assert(z=='full')
-            xepcm=getWRF(rname,woname,varin,type='epcm',force=force,z='full',nlay=nlay,intlog=intlog)
-            xaz,r=azimAv(xepcm)
-            np.save(spath+ '.' + var + '.'+ type,xaz)
+            lon0,lat0=getWRF(rname,woname,'cc',force=force)
+            xdwcm=getWRF(rname,woname,varin,vtype='dwcm',force=force,z='full')
+            xaz,r=azimAv(xdwcm,lon0,lat0)
+            np.save(spath+ '.' + var + '.'+ vtype,xaz)
         
-        elif type=='azdpwcm':
+        elif vtype=='azdpwcm':
             assert(z=='full')
-            xdpwcm=getWRF(rname,woname,varin,type='dpwcm',force=force,z='full',intlog=intlog)
-            xaz,r=azimAv(xdpwcm)
-            np.save(spath+ '.' + var + '.'+ type,xaz)  
+            lon0,lat0=getWRF(rname,woname,'cc',force=force)
+            xdpwcm=getWRF(rname,woname,varin,vtype='dpwcm',force=force,z='full',intlog=intlog)
+            xaz,r=azimAv(xdpwcm,lon0,lat0)
+            np.save(spath+ '.' + var + '.'+ vtype,xaz)
+            
+        elif vtype=='azdpwsmcm':
+            assert(z=='full')
+            lon0,lat0=getWRF(rname,woname,'cc',force=force)
+            xdpwcm=getWRF(rname,woname,varin,vtype='dpwsmcm',force=force,z='full',intlog=intlog)
+            xaz,r=azimAv(xdpwcm,lon0,lat0)
+            np.save(spath+ '.' + var + '.'+ vtype,xaz)
+            
             
         else:
-            print('Bad Type: ' + type)
+            print('Bad vtype: ' + vtype)
     # Get Var (should have been created above, or existed already)
-    #print('Loading: ' + os.path.join(rname,fname) + '.' + var + '.' + type + '.npy')
+    #print('Loading: ' + os.path.join(rname,fname) + '.' + var + '.' + vtype + '.npy')
     x=np.load(gwpath)
     if z in [0,'full']:
         pass
     else:
-        if type=='raw':
+        if vtype=='raw':
             x=x[:,:,z-1]
-        elif type=='az':
+        elif vtype=='az':
             x=x[:,z-1]
             # pass # z index not required as performed on 1st call to raw
     return(x)
 
-# creates evenly spaced pressure grid for interpgrid2np func
-def equalPgrid(P,n):
-    Pi=np.full((P.shape[0],P.shape[1],n),np.nan)
-    for i in range(P.shape[0]):
-        for j in range(P.shape[1]):
-            Pi[i,j,:]=np.array(range(0,n))*(P[i,j,0]-P[i,j,-1])/(n-1)+P[i,j,-1]
-    return(Pi)
+# # creates evenly spaced pressure grid for interpgrid2np func
+# def equalPgrid(P,n):
+#     Pi=np.full((P.shape[0],P.shape[1],n),np.nan)
+#     for i in range(P.shape[0]):
+#         for j in range(P.shape[1]):
+#             Pi[i,j,:]=np.array(range(0,n))*(P[i,j,0]-P[i,j,-1])/(n-1)+P[i,j,-1]
+#     return(Pi)
 
-# interps x at P to Pi
-def interpgrid2nP(x,P,Pi,intlog=True):
-    assert(x.shape==P.shape)
-    xi=np.full((x.shape[0],x.shape[1],Pi.shape[2]),np.nan)
-    for i in range(x.shape[0]):
-        for j in range(x.shape[1]):
-            if intlog:
-                xci=-np.interp(-np.log(Pi[i,j,:]),-np.log(P[i,j,:]),-x[i,j,:])
-            else:
-                xci=-np.interp(-(Pi[i,j,:]),-(P[i,j,:]),-x[i,j,:])
-            xi[i,j,:]=xci         
-    return(xi)
-
+# # interps x at P to Pi
+# def interpgrid2nP(x,P,Pi,intlog=True):
+#     assert(x.shape==P.shape)
+#     xi=np.full((x.shape[0],x.shape[1],Pi.shape[2]),np.nan)
+#     for i in range(x.shape[0]):
+#         for j in range(x.shape[1]):
+#             if intlog:
+#                 xci=-np.interp(-np.log(Pi[i,j,:]),-np.log(P[i,j,:]),-x[i,j,:])
+#             else:
+#                 xci=-np.interp(-(Pi[i,j,:]),-(P[i,j,:]),-x[i,j,:])
+#             xi[i,j,:]=xci         
+#     return(xi)
 
 
 def wopath(run,fname):
@@ -188,11 +198,15 @@ def getflist(run='run_CTRL',d=3):
     flist=[os.path.basename(p) for p in plist]
     return(flist)
 
-def getpath(run,f):
-    p=os.path.join('/net/wrfstore6/disk1/nsparks/itc/run',run,f)
-    return(p)
+# def getpath(run,f):
+#     p=os.path.join('/net/wrfstore6/disk1/nsparks/itc/run',run,f)
+#     return(p)
 
-def wrf2pol(f,z):
+# def wopath(run,fname):
+#     wopath=os.path.join('/net/wrfstore6/disk1/nsparks/itc/run',run,fname)
+#     return(wopath)
+
+def wrf2pol(f,z,lon0,lat0):
     if z=='sfc':
         u=wrfout2var2d(f,'U10')
         v=wrfout2var2d(f,'V10')
@@ -201,7 +215,7 @@ def wrf2pol(f,z):
         v=wrfout2var3d(f,'V')
     else:
         print('Bad z:',z)
-    vt,vr=cart2pol(u,v)
+    vt,vr=cart2pol(u,v,lon0,lat0)
     #vtaz,r=azimAv(vt)
     #vraz,r=azimAv(vr)
     th=(np.arctan2(vt,vr)-np.pi/2)*180/np.pi
@@ -224,15 +238,11 @@ def TH2T(TH,P):
     T=TH*(P/1000)**0.2854
     return(T)
 
-def wopath(run,fname):
-    wopath=os.path.join('/net/wrfstore6/disk1/nsparks/itc/run',run,fname)
-    return(wopath)
-
 def wrf2max(run,f,var,minim=False):
     t=getElapsedDays(wopath(run,f))
     x,y=getCoords(wopath(run,f))
     dx=np.diff(x)[0]
-    v=getWRF(run,f,var,type='az')
+    v=getWRF(run,f,var,vtype='az')
     vmax,rmax,zmax=getvmax(v)
     rmax=rmax*dx/1000
     if minim:
@@ -244,7 +254,7 @@ def wrf2r(run,f,var,rs,minim=False):
     t=getElapsedDays(wopath(run,f))
     x,y=getCoords(wopath(run,f))
     dx=np.diff(x)[0]
-    v=getWRF(run,f,var,type='az')
+    v=getWRF(run,f,var,vtype='az')
     rc=getRcoord(wopath(run,f))
     vr=[]
     for r in rs:
@@ -254,8 +264,9 @@ def wrf2r(run,f,var,rs,minim=False):
     vr.append(t)
     return(vr)
 
-def getElapsedDays(f):
-    ncd=Dataset(f)
+def getElapsedDays(run,f):
+    fpath=wopath(run,f)
+    ncd=Dataset(fpath)
     x=ncd.variables['Times'][:].data[0]
     x=[i.decode('UTF-8') for i in x]
     outtime=''.join(x)
@@ -276,8 +287,9 @@ def getvmax(xrz):
     zmax=xmx[1][0]
     return(xm,rmax,zmax)
 
-def getCoords(fname):
-    nc = Dataset(fname,'r')
+def getCoords(runname,woname,corners=False,cc=True,force=False):  
+    fpath=wopath(runname,woname)
+    nc = Dataset(fpath,'r')
     nx=nc.dimensions['west_east'].size
     ny=nc.dimensions['south_north'].size
     dx=nc.DX
@@ -285,8 +297,17 @@ def getCoords(fname):
     nc.close()
     assert(dx==dy)
     dxy=dx
-    x=np.linspace(-nx/2,nx/2,nx+1)*dxy
-    y=np.linspace(-ny/2,ny/2,ny+1)*dxy
+    x=np.linspace(-(nx-1)/2,(nx-1)/2,nx)*dxy
+    y=np.linspace(-(ny-1)/2,(ny-1)/2,ny)*dxy
+    if corners: #useful for pcolor(mesh)
+        x=np.linspace(-(nx)/2,(nx)/2,nx+1)*dxy
+        y=np.linspace(-(ny)/2,(ny)/2,ny+1)*dxy
+    if cc: # cyclone centred coords
+        lonx0,latx0=getWRF(runname,woname,'cc',force=force)
+        lon0=x[lonx0] 
+        lat0=y[latx0]
+        x=x+lon0
+        y=y+lat0
     return(x,y)
 
 def getHeightCoord(f):
@@ -362,17 +383,21 @@ def unstagger(u):
     u=np.transpose(u,tr)
     return(u)
 
-def cart2pol(u,v):
-# assumes dimes 0,1 are x,y corrds
+def cart2pol(u,v,x0=-1,y0=-1):
+# assumes dims 0,1 are x,y coords
     dims=u.ndim
     if dims == 2: # add trailing singleton
-         u=np.expand_dims(u,2)
-         v=np.expand_dims(v,2)
+        u=np.expand_dims(u,2)
+        v=np.expand_dims(v,2)
     nx=u.shape[0]
     ny=v.shape[1]
-    x=np.linspace(-nx/2,nx/2,nx+1)
-    y=np.linspace(-ny/2,ny/2,ny+1)
-    xg,yg=np.meshgrid(x[:-1],y[:-1])
+    if x0==-1:
+        x0=nx/2
+    if y0==-1:
+        y0=ny/2
+    x=np.arange(0,nx)-x0
+    y=np.arange(0,ny)-y0
+    xg,yg=np.meshgrid(y,x)
     dg=np.sqrt(np.power(xg,2)+np.power(yg,2))
     dg[np.where(dg==0)]=1
     cosg=np.divide(xg,dg)
@@ -385,21 +410,25 @@ def cart2pol(u,v):
         u*np.tile(cosg,[1,1,v.shape[2]])
     return(np.squeeze(ut),np.squeeze(ur))
 
-def rplane(shp,d):
+def rplane(shp,d,x0,y0):
     nx=shp[0]
     ny=shp[1]
-    x=(np.tile(range(nx),[ny,1])-nx/2)*d
-    y=(np.tile(np.arange(ny).reshape((ny,1)),[1,nx])-ny/2)*d
+    if x0==-1:
+        x0=nx/2
+    if y0==-1:
+        y0=ny/2
+    y=(np.tile(range(ny),[nx,1])-y0)*d
+    x=(np.tile(np.arange(nx).reshape((nx,1)),[1,ny])-x0)*d
     r=np.sqrt(np.square(x)+np.square(y))
     return(r)
 
-def azimAv(v):
+def azimAv(v,x0=-1,y0=-1):
 # works on 2d and 3d. Expectsd x,y as first 2 dims
     dims=len(v.shape)
     if dims == 2: # reshape to 3d
         v=np.expand_dims(v,2)
     dxy=1
-    r=rplane(v.shape,1)
+    r=rplane(v.shape,1,x0,y0)
     dr=dxy #rad bin width
     rbinmax=v.shape[0]/2
     rbins=np.arange(1,rbinmax,dr)
