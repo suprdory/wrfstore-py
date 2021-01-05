@@ -56,6 +56,15 @@ def getWRF(rname,woname,varin,vtype='raw',force=False,z=0,nlay=100,intlog=True):
             elif z==0 and var=='v10':
                 x=wrfout2var2d(wrfoutpath,'V10')
                 np.save(spath+ '.' + var + '.' +vtype, x)
+                        
+            elif z!=0 and var=='u':
+                x=wrfout2var3d(wrfoutpath,'U')
+                np.save(spath+ '.' + var + '.' +vtype, x)
+            elif z!=0 and var=='v':
+                x=wrfout2var3d(wrfoutpath,'V')
+                np.save(spath+ '.' + var + '.' +vtype, x)
+                
+                
             elif z==0 and var=='T2':
                 T2=wrfout2var2d(wrfoutpath,'T2')
                 np.save(spath + '.' + 'T2' + '.' + vtype,T2)
@@ -122,7 +131,7 @@ def getWRF(rname,woname,varin,vtype='raw',force=False,z=0,nlay=100,intlog=True):
             x=getWRF(rname,woname,varin,vtype='raw',force=force,z='full')
             xc=np.sum(0.5*(x[:,:,:-1]+x[:,:,1:])*np.diff(P,axis=2),axis=2)/np.sum(np.diff(P,axis=2),axis=2)
             np.save(spath+ '.' + var + '.' + vtype,xc)   
-            
+         #pressure level height weighted column mean of smoothed var   
         elif vtype=='dpwsmcm': 
             assert(z=='full')
             P=getWRF(rname,woname,'P',force=force,z='full',vtype='raw')
@@ -239,8 +248,8 @@ def TH2T(TH,P):
     return(T)
 
 def wrf2max(run,f,var,minim=False):
-    t=getElapsedDays(wopath(run,f))
-    x,y=getCoords(wopath(run,f))
+    t=getElapsedDays(run,f)
+    x,y=getCoords(run,f)
     dx=np.diff(x)[0]
     v=getWRF(run,f,var,vtype='az')
     vmax,rmax,zmax=getvmax(v)
@@ -310,8 +319,9 @@ def getCoords(runname,woname,corners=False,cc=True,force=False):
         y=y+lat0
     return(x,y)
 
-def getHeightCoord(f):
-    nc = Dataset(f,'r')
+def getHeightCoord(run,fname):
+    woname=wopath(run,fname)
+    nc = Dataset(woname,'r')
     phb=nc.variables['PHB']
     z=np.mean(phb[0,:,:,:],axis=(1,2))/9.8
     nc.close()
@@ -343,25 +353,25 @@ def wrfout2var3d(ncfname,var):
     v= np.transpose(v,(-2,-1,0))
     return(v)
 
-def unstagger_old(u):
-    nd=u.ndim
-    if nd==2: tr=(0,1)
-    if nd==3: tr=(1,2,0)
-    if nd==4: tr=(2,3,0,1)
-    u=np.transpose(u,tr)
-    if u.shape[0]==u.shape[1]:
-        0 # do nothing
-    elif u.shape[0]==u.shape[1]+1:
-            u=u[:-1,:]
-    elif u.shape[0]+1 == u.shape[1]:
-            u=u[:,:-1]
-    else:
-        print('Strange dimensions:',u.shape)
-    if nd==2: tr=(0,1)
-    if nd==3: tr=(2,0,1)
-    if nd==4: tr=(2,3,0,1)
-    u=np.transpose(u,tr)
-    return(u)
+# def unstagger_old(u):
+#     nd=u.ndim
+#     if nd==2: tr=(0,1)
+#     if nd==3: tr=(1,2,0)
+#     if nd==4: tr=(2,3,0,1)
+#     u=np.transpose(u,tr)
+#     if u.shape[0]==u.shape[1]:
+#         0 # do nothing
+#     elif u.shape[0]==u.shape[1]+1:
+#             u=u[:-1,:]
+#     elif u.shape[0]+1 == u.shape[1]:
+#             u=u[:,:-1]
+#     else:
+#         print('Strange dimensions:',u.shape)
+#     if nd==2: tr=(0,1)
+#     if nd==3: tr=(2,0,1)
+#     if nd==4: tr=(2,3,0,1)
+#     u=np.transpose(u,tr)
+#     return(u)
 
 def unstagger(u):
     nd=u.ndim

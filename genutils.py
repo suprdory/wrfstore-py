@@ -41,6 +41,7 @@ def imshowxy(x,y,c,ax=0,**kwargs):
     return(im)
 
 def resample2center(v,cc):
+#     cc=wrf.getWRF(run,fname,'cc')
     x0=int(v.shape[0]/2)-cc[0]
     y0=int(v.shape[1]/2)-cc[1]
     #print(v.shape,cc,(x0,y0))
