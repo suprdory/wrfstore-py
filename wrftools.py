@@ -7,7 +7,9 @@ import genutils as gu
 # top level function for getting np array from wrfout
 # searches cache for pre extracted raw vars, pre calced azim av, then creates if neccesary
 # force=True to force recalc, z=0 for surface, z='full' for all, z=[n1, n2,...] for model levels
-def getWRF(rname,woname,varin,vtype='raw',force=False,z=0,nlay=100,intlog=True):
+def getWRF(rname,woname,varin,vtype='raw',force=False,z=0):
+# def getWRF(fname,varin,vtype='raw',force=False,z=0,nlay=100,intlog=True):
+
     pydatadir='/net/wrfstore6/disk1/nsparks/itc/interm/'
     wrfdatadir='/net/wrfstore6/disk1/nsparks/itc/run/'
     # add surface suffix to var
@@ -149,14 +151,14 @@ def getWRF(rname,woname,varin,vtype='raw',force=False,z=0,nlay=100,intlog=True):
         elif vtype=='azdpwcm':
             assert(z=='full')
             lon0,lat0=getWRF(rname,woname,'cc',force=force)
-            xdpwcm=getWRF(rname,woname,varin,vtype='dpwcm',force=force,z='full',intlog=intlog)
+            xdpwcm=getWRF(rname,woname,varin,vtype='dpwcm',force=force,z='full')
             xaz,r=azimAv(xdpwcm,lon0,lat0)
             np.save(spath+ '.' + var + '.'+ vtype,xaz)
             
         elif vtype=='azdpwsmcm':
             assert(z=='full')
             lon0,lat0=getWRF(rname,woname,'cc',force=force)
-            xdpwcm=getWRF(rname,woname,varin,vtype='dpwsmcm',force=force,z='full',intlog=intlog)
+            xdpwcm=getWRF(rname,woname,varin,vtype='dpwsmcm',force=force,z='full')
             xaz,r=azimAv(xdpwcm,lon0,lat0)
             np.save(spath+ '.' + var + '.'+ vtype,xaz)
             
@@ -287,7 +289,7 @@ def getElapsedDays(run,f):
     return(days)
 
 def getvmax(xrz):
-    if xrz.ndim == 1: # reshape to 3d
+    if xrz.ndim == 1: # reshape to 2d
         #x=np.reshape(x,(1,x.shape[0],x.shape[1]))
         xrz=np.expand_dims(xrz,1)
     xm=np.nanmax(xrz)
