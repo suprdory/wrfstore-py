@@ -251,7 +251,7 @@ def wrf2max(run,f,var,minim=False):
     t=getElapsedDays(run,f)
     x,y=getCoords(run,f)
     dx=np.diff(x)[0]
-    v=getWRF(run,f,var,vtype='az')
+    v=getWRF(wopath(run,f),var,vtype='az')
     vmax,rmax,zmax=getvmax(v)
     rmax=rmax*dx/1000
     if minim:
@@ -312,7 +312,7 @@ def getCoords(runname,woname,corners=False,cc=True,force=False):
         x=np.linspace(-(nx)/2,(nx)/2,nx+1)*dxy
         y=np.linspace(-(ny)/2,(ny)/2,ny+1)*dxy
     if cc: # cyclone centred coords
-        lonx0,latx0=getWRF(runname,woname,'cc',force=force)
+        lonx0,latx0=getWRF(fpath,'cc',force=force)
         lon0=x[lonx0] 
         lat0=y[latx0]
         x=x+lon0
