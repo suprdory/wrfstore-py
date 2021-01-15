@@ -7,11 +7,15 @@ import genutils as gu
 # top level function for getting np array from wrfout
 # searches cache for pre extracted raw vars, pre calced azim av, then creates if neccesary
 # force=True to force recalc, z=0 for surface, z='full' for all, z=[n1, n2,...] for model levels
-def getWRF(rname,woname,varin,vtype='raw',force=False,z=0):
+def getWRF(wopath,varin,vtype='raw',force=False,z=0):
+
+    assert wopath[:4]=='/net',"wopath is absolute path"
+    rname=os.path.basename(os.path.dirname(wopath))
+    woname=os.path.basename(wopath)
 # def getWRF(fname,varin,vtype='raw',force=False,z=0,nlay=100,intlog=True):
 
     pydatadir='/net/wrfstore6/disk1/nsparks/itc/interm/'
-    wrfdatadir='/net/wrfstore6/disk1/nsparks/itc/run/'
+#     wrfdatadir='/net/wrfstore6/disk1/nsparks/itc/run/'
     # add surface suffix to var
     if z==0:
         if varin in ['vt','vr','V','th','v','u']:
@@ -28,68 +32,70 @@ def getWRF(rname,woname,varin,vtype='raw',force=False,z=0):
     # check if var,run,z,vtype exists. In not, create
     gwname=woname + '.' + var + '.' + vtype + '.npy' #getWRF name
     gwpath=os.path.join(pydatadir,rname,gwname)
+    
+    
     if (not os.path.exists(gwpath)) or force==True :
         print('Creating: ' + os.path.join(rname,gwname))
         sdir=os.path.join(pydatadir,rname)
         if not os.path.exists(sdir):
             os.makedirs(sdir)
-        wrfoutpath=os.path.join(wrfdatadir,rname,woname)
+#         wrfoutpath=os.path.join(wrfdatadir,rname,woname)
         spath=os.path.join(sdir,woname)
 
         if vtype=='raw':
             if z==0 and var in ['vt10', 'vr10', 'V10', 'th10']:
-                lon0,lat0=getWRF(rname,woname,'cc',force=force)
-                V10, vt10, vr10, th10=wrf2pol(wrfoutpath,'sfc',lon0,lat0)
+                lon0,lat0=getWRF(wopath,'cc',force=force)
+                V10, vt10, vr10, th10=wrf2pol(wopath,'sfc',lon0,lat0)
                 np.save(spath + '.' + 'V10' + '.' + vtype, V10)
                 np.save(spath + '.' + 'vt10' + '.' + vtype, vt10)
                 np.save(spath + '.' + 'vr10' + '.' + vtype, vr10)
                 np.save(spath + '.' + 'th10' + '.' + vtype, th10)
             elif z!=0 and var in ['vt', 'vr', 'V', 'th']:
-                lon0,lat0=getWRF(rname,woname,'cc',force=force)
-                V, vt, vr, th=wrf2pol(wrfoutpath,'full',lon0,lat0)
+                lon0,lat0=getWRF(wopath,'cc',force=force)
+                V, vt, vr, th=wrf2pol(wopath,'full',lon0,lat0)
                 np.save(spath + '.' + 'V' + '.' + vtype, V)
                 np.save(spath + '.' + 'vt' + '.' + vtype, vt)
                 np.save(spath + '.' + 'vr' + '.' + vtype, vr)
                 np.save(spath + '.' + 'th' + '.' + vtype, th)
             
             elif z==0 and var=='u10':
-                x=wrfout2var2d(wrfoutpath,'U10')
+                x=wrfout2var2d(wopath,'U10')
                 np.save(spath+ '.' + var + '.' +vtype, x)
             elif z==0 and var=='v10':
-                x=wrfout2var2d(wrfoutpath,'V10')
+                x=wrfout2var2d(wopath,'V10')
                 np.save(spath+ '.' + var + '.' +vtype, x)
                         
             elif z!=0 and var=='u':
-                x=wrfout2var3d(wrfoutpath,'U')
+                x=wrfout2var3d(wopath,'U')
                 np.save(spath+ '.' + var + '.' +vtype, x)
             elif z!=0 and var=='v':
-                x=wrfout2var3d(wrfoutpath,'V')
+                x=wrfout2var3d(wopath,'V')
                 np.save(spath+ '.' + var + '.' +vtype, x)
                 
                 
             elif z==0 and var=='T2':
-                T2=wrfout2var2d(wrfoutpath,'T2')
+                T2=wrfout2var2d(wopath,'T2')
                 np.save(spath + '.' + 'T2' + '.' + vtype,T2)
             elif z!=0 and var=='TH':
-                TH=wrfout2var3d(wrfoutpath,'T')+300  
+                TH=wrfout2var3d(wopath,'T')+300  
                 np.save(spath + '.' + 'TH' + '.' + vtype,TH)
             elif z!=0 and var=='T':
-                TH=getWRF(rname,woname,'TH',force=force,z='full',vtype='raw')
-                P=getWRF(rname,woname,'P',force=force,z='full',vtype='raw')
+                TH=getWRF(wopath,'TH',force=force,z='full',vtype='raw')
+                P=getWRF(wopath,'P',force=force,z='full',vtype='raw')
                 T=TH2T(TH,P)
                 np.save(spath + '.' + 'T' + '.' + vtype,T)   
             elif z==0 and var=='Psfc':
-                Psfc=wrf2P(wrfoutpath,'sfc')
+                Psfc=wrf2P(wopath,'sfc')
                 np.save(spath + '.' + 'Psfc' + '.' + vtype ,Psfc)
             elif z!=0 and var=='P':
-                P=wrf2P(wrfoutpath,'full')
+                P=wrf2P(wopath,'full')
                 np.save(spath + '.' + 'P' + '.' + vtype,P)
             elif z!=0 and var=='H':
-                H=wrfout2var3d(wrfoutpath,'PH')
-                HB=wrfout2var3d(wrfoutpath,'PHB')
+                H=wrfout2var3d(wopath,'PH')
+                HB=wrfout2var3d(wopath,'PHB')
                 np.save(spath + '.' + 'H' + '.' + vtype,(H+HB)/9.81)
             elif z==0 and var=='cc': # cyclone centre indices
-                P=getWRF(rname,woname,'P',z=10) #~950hPa
+                P=getWRF(wopath,'P',z=10) #~950hPa
                 xmin,ymin=np.unravel_index(P.argmin(),P.shape)
                 np.save(spath + '.' + var + '.' + vtype,(xmin,ymin))
             else:
@@ -101,13 +107,13 @@ def getWRF(rname,woname,varin,vtype='raw',force=False,z=0):
                 zaz=0
             else:
                 zaz='full'
-            x=getWRF(rname,woname,varin,vtype='raw',force=force,z=zaz)
-            lon0,lat0=getWRF(rname,woname,'cc',force=force)
+            x=getWRF(wopath,varin,vtype='raw',force=force,z=zaz)
+            lon0,lat0=getWRF(wopath,'cc',force=force)
             xaz,r=azimAv(x,lon0,lat0)
             np.save(spath + '.' + var + '.' + vtype, xaz)
             
         elif vtype=='sm':
-            x=getWRF(rname,woname,varin,vtype='raw',force=force,z=z)
+            x=getWRF(wopath,varin,vtype='raw',force=force,z=z)
 #             print(type(x))
             xsm=gu.smooth2d(x,6)
 #             print(type(xsm))
@@ -115,12 +121,12 @@ def getWRF(rname,woname,varin,vtype='raw',force=False,z=0):
             
         elif vtype=='dwcm': # density weighted column mean
             assert(z=='full')
-            H=getWRF(rname,woname,'H',force=force,z='full',vtype='raw')
-            P=getWRF(rname,woname,'P',force=force,z='full',vtype='raw')
-            T=getWRF(rname,woname,'T',force=force,z='full',vtype='raw')
+            H=getWRF(wopath,'H',force=force,z='full',vtype='raw')
+            P=getWRF(wopath,'P',force=force,z='full',vtype='raw')
+            T=getWRF(wopath,'T',force=force,z='full',vtype='raw')
             zd=np.diff(H,axis=2)/9.8
             wgt=zd*P/T
-            x=getWRF(rname,woname,varin,vtype='raw',force=force,z='full')
+            x=getWRF(wopath,varin,vtype='raw',force=force,z='full')
             wgtx=wgt*x
             xdwcm=np.sum(wgtx,axis=2)/np.sum(wgt,axis=2)
             np.save(spath+ '.' + var + '.' + vtype,xdwcm)
@@ -129,36 +135,36 @@ def getWRF(rname,woname,varin,vtype='raw',force=False,z=0):
         #this is the correct method for mass weighted column means
         elif vtype=='dpwcm': 
             assert(z=='full')
-            P=getWRF(rname,woname,'P',force=force,z='full',vtype='raw')
-            x=getWRF(rname,woname,varin,vtype='raw',force=force,z='full')
+            P=getWRF(wopath,'P',force=force,z='full',vtype='raw')
+            x=getWRF(wopath,varin,vtype='raw',force=force,z='full')
             xc=np.sum(0.5*(x[:,:,:-1]+x[:,:,1:])*np.diff(P,axis=2),axis=2)/np.sum(np.diff(P,axis=2),axis=2)
             np.save(spath+ '.' + var + '.' + vtype,xc)   
          #pressure level height weighted column mean of smoothed var   
         elif vtype=='dpwsmcm': 
             assert(z=='full')
-            P=getWRF(rname,woname,'P',force=force,z='full',vtype='raw')
-            x=getWRF(rname,woname,varin,vtype='sm',force=force,z='full')
+            P=getWRF(wopath,'P',force=force,z='full',vtype='raw')
+            x=getWRF(wopath,varin,vtype='sm',force=force,z='full')
             xc=np.sum(0.5*(x[:,:,:-1]+x[:,:,1:])*np.diff(P,axis=2),axis=2)/np.sum(np.diff(P,axis=2),axis=2)
             np.save(spath+ '.' + var + '.' + vtype,xc) 
             
         elif vtype=='azdwcm':
             assert(z=='full')
-            lon0,lat0=getWRF(rname,woname,'cc',force=force)
-            xdwcm=getWRF(rname,woname,varin,vtype='dwcm',force=force,z='full')
+            lon0,lat0=getWRF(wopath,'cc',force=force)
+            xdwcm=getWRF(wopath,varin,vtype='dwcm',force=force,z='full')
             xaz,r=azimAv(xdwcm,lon0,lat0)
             np.save(spath+ '.' + var + '.'+ vtype,xaz)
         
         elif vtype=='azdpwcm':
             assert(z=='full')
-            lon0,lat0=getWRF(rname,woname,'cc',force=force)
-            xdpwcm=getWRF(rname,woname,varin,vtype='dpwcm',force=force,z='full')
+            lon0,lat0=getWRF(wopath,'cc',force=force)
+            xdpwcm=getWRF(wopath,varin,vtype='dpwcm',force=force,z='full')
             xaz,r=azimAv(xdpwcm,lon0,lat0)
             np.save(spath+ '.' + var + '.'+ vtype,xaz)
             
         elif vtype=='azdpwsmcm':
             assert(z=='full')
-            lon0,lat0=getWRF(rname,woname,'cc',force=force)
-            xdpwcm=getWRF(rname,woname,varin,vtype='dpwsmcm',force=force,z='full')
+            lon0,lat0=getWRF(wopath,'cc',force=force)
+            xdpwcm=getWRF(wopath,varin,vtype='dpwsmcm',force=force,z='full')
             xaz,r=azimAv(xdpwcm,lon0,lat0)
             np.save(spath+ '.' + var + '.'+ vtype,xaz)
             
@@ -208,14 +214,6 @@ def getflist(run='run_CTRL',d=3):
     plist=sorted(glob.glob(os.path.join('/net/wrfstore6/disk1/nsparks/itc/run',run,'wrfout_d0' + str(d)+'*00')))
     flist=[os.path.basename(p) for p in plist]
     return(flist)
-
-# def getpath(run,f):
-#     p=os.path.join('/net/wrfstore6/disk1/nsparks/itc/run',run,f)
-#     return(p)
-
-# def wopath(run,fname):
-#     wopath=os.path.join('/net/wrfstore6/disk1/nsparks/itc/run',run,fname)
-#     return(wopath)
 
 def wrf2pol(f,z,lon0,lat0):
     if z=='sfc':
