@@ -273,18 +273,22 @@ def wrf2r(run,f,var,rs,minim=False,force=False):
     vr.append(t)
     return(vr)
 
-def getElapsedDays(run,f):
+def getElapsedDays(run,f,rst=False):
     fpath=wopath(run,f)
     ncd=Dataset(fpath)
     x=ncd.variables['Times'][:].data[0]
     x=[i.decode('UTF-8') for i in x]
     outtime=''.join(x)
-    starttime=ncd.SIMULATION_START_DATE
+    if rst:
+        starttime=ncd.START_DATE
+    else:
+        starttime=ncd.SIMULATION_START_DATE
     dt0=datetime.strptime(starttime, "%Y-%m-%d_%H:%M:%S")
     dt1=datetime.strptime(outtime, "%Y-%m-%d_%H:%M:%S")
     dt=dt1-dt0
     days=dt.days+dt.seconds/(24*60*60)
     return(days)
+
 
 def getvmax(xrz):
     if xrz.ndim == 1: # reshape to 2d
