@@ -33,7 +33,6 @@ def getWRF(wopath,varin,vtype='raw',force=False,z=0):
     gwname=woname + '.' + var + '.' + vtype + '.npy' #getWRF name
     gwpath=os.path.join(pydatadir,rname,gwname)
     
-    
     if (not os.path.exists(gwpath)) or force==True :
         print('Creating: ' + os.path.join(rname,gwname))
         sdir=os.path.join(pydatadir,rname)
@@ -95,7 +94,8 @@ def getWRF(wopath,varin,vtype='raw',force=False,z=0):
                 HB=wrfout2var3d(wopath,'PHB')
                 np.save(spath + '.' + 'H' + '.' + vtype,(H+HB)/9.81)
             elif z==0 and var=='cc': # cyclone centre indices
-                P=getWRF(wopath,'P',z=10) #~950hPa
+#                 print('centring')
+                P=getWRF(wopath,'P',z=0) #z=10=~950hPa
                 xmin,ymin=np.unravel_index(P.argmin(),P.shape)
                 np.save(spath + '.' + var + '.' + vtype,(xmin,ymin))
             else:
@@ -157,7 +157,7 @@ def getWRF(wopath,varin,vtype='raw',force=False,z=0):
         elif vtype=='azdpwcm':
             assert(z=='full')
             lon0,lat0=getWRF(wopath,'cc',force=force)
-            xdpwcm=getWRF(wopath,varin,vtype='dpwcm',force=force,z='full')
+            xdpwcm=getWRF(wopath,varin,vtype='dpwcm',force=force,z='full',recentre=recentre)
             xaz,r=azimAv(xdpwcm,lon0,lat0)
             np.save(spath+ '.' + var + '.'+ vtype,xaz)
             
@@ -210,7 +210,7 @@ def wopath(run,fname):
     wopath=os.path.join('/net/wrfstore6/disk1/nsparks/itc/run',run,fname)
     return(wopath)
               
-def getflist(run='run_CTRL',d=3):
+def wolist(run='run_CTRL',d=3):
     plist=sorted(glob.glob(os.path.join('/net/wrfstore6/disk1/nsparks/itc/run',run,'wrfout_d0' + str(d)+'*00')))
     flist=[os.path.basename(p) for p in plist]
     return(flist)
@@ -247,11 +247,11 @@ def TH2T(TH,P):
     T=TH*(P/1000)**0.2854
     return(T)
 
-def wrf2max(run,f,var,minim=False):
+def wrf2max(run,f,var,minim=False,force=False):
     t=getElapsedDays(run,f)
     x,y=getCoords(run,f)
     dx=np.diff(x)[0]
-    v=getWRF(wopath(run,f),var,vtype='az')
+    v=getWRF(wopath(run,f),var,vtype='az',force=force)
     vmax,rmax,zmax=getvmax(v)
     rmax=rmax*dx/1000
     if minim:
@@ -259,11 +259,11 @@ def wrf2max(run,f,var,minim=False):
         vmax=-vmax
     return(vmax,rmax,zmax,t)
 
-def wrf2r(run,f,var,rs,minim=False):
+def wrf2r(run,f,var,rs,minim=False,force=False):
     t=getElapsedDays(wopath(run,f))
     x,y=getCoords(wopath(run,f))
     dx=np.diff(x)[0]
-    v=getWRF(run,f,var,vtype='az')
+    v=getWRF(run,f,var,vtype='az',force=force)
     rc=getRcoord(wopath(run,f))
     vr=[]
     for r in rs:
