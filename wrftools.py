@@ -3,6 +3,7 @@ import numpy as np
 from datetime import datetime
 import os,glob
 import genutils as gu
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
 # top level function for getting np array from wrfout
 # searches cache for pre extracted raw vars, pre calced azim av, then creates if neccesary
@@ -24,7 +25,7 @@ def getWRF(wopath,varin,vtype='raw',force=False,z=0):
             var=varin+'sfc'
         if varin in ['T']:
             var=varin+'2'
-        if varin in ['cc']:
+        if varin in ['cc','tp','crr']:
             var=varin
     else:
         var=varin
@@ -71,10 +72,10 @@ def getWRF(wopath,varin,vtype='raw',force=False,z=0):
                 x=wrfout2var3d(wopath,'V')
                 np.save(spath+ '.' + var + '.' +vtype, x)
                 
-                
             elif z==0 and var=='T2':
                 T2=wrfout2var2d(wopath,'T2')
                 np.save(spath + '.' + 'T2' + '.' + vtype,T2)
+                    
             elif z!=0 and var=='TH':
                 TH=wrfout2var3d(wopath,'T')+300  
                 np.save(spath + '.' + 'TH' + '.' + vtype,TH)
@@ -93,10 +94,24 @@ def getWRF(wopath,varin,vtype='raw',force=False,z=0):
                 H=wrfout2var3d(wopath,'PH')
                 HB=wrfout2var3d(wopath,'PHB')
                 np.save(spath + '.' + 'H' + '.' + vtype,(H+HB)/9.81)
+            elif z==0 and var=='tp':
+                rainnc=wrfout2var2d(wopath,'RAINNC')
+                rainc=wrfout2var2d(wopath,'RAINC')
+                rainsh=wrfout2var2d(wopath,'RAINSH')
+                np.save(spath+ '.' + var + '.' + vtype, rainnc+rainc+rainsh)
+            elif z==0 and var=='crr':
+                ccr=wrfout2var2d(wopath,'RAINCV')
+                np.save(spath+ '.' + var + '.' + vtype, ccr)
+            
+            
             elif z==0 and var=='cc': # cyclone centre indices
 #                 print('centring')
                 P=getWRF(wopath,'P',z=0) #z=10=~950hPa
-                xmin,ymin=np.unravel_index(P.argmin(),P.shape)
+                Ps=gu.smooth2d(P,15)
+                xmin,ymin=np.unravel_index(Ps.argmin(),Ps.shape)
+                # if xmin or ymin are on boundary return nans?
+                # assert(xmin not in [0 P.shape[0]])
+                # assert(ymin not in [0 P.shape[1]])
                 np.save(spath + '.' + var + '.' + vtype,(xmin,ymin))
             else:
                 print('Bad Raw Variable: ' + var)
@@ -247,34 +262,33 @@ def TH2T(TH,P):
     T=TH*(P/1000)**0.2854
     return(T)
 
-def wrf2max(run,f,var,minim=False,force=False):
-    t=getElapsedDays(run,f)
-    x,y=getCoords(run,f)
+def wrf2max(fpath,var,minim=False,force=False):
+    t=getElapsedDays(fpath)
+    x,y=getCoords(fpath)
     dx=np.diff(x)[0]
-    v=getWRF(wopath(run,f),var,vtype='az',force=force)
+    v=getWRF(fpath,var,vtype='az',force=force)
     vmax,rmax,zmax=getvmax(v)
-    rmax=rmax*dx/1000
     if minim:
         vmax,rmax,zmax=getvmax(-v)
         vmax=-vmax
+    rmax=rmax*dx/1000    
     return(vmax,rmax,zmax,t)
 
-def wrf2r(run,f,var,rs,minim=False,force=False):
-    t=getElapsedDays(wopath(run,f))
-    x,y=getCoords(wopath(run,f))
-    dx=np.diff(x)[0]
-    v=getWRF(run,f,var,vtype='az',force=force)
-    rc=getRcoord(wopath(run,f))
-    vr=[]
-    for r in rs:
-        assert(r>=np.min(rc) and r<= np.max(rc))
-        rx=np.argmin( np.abs(r-rc))
-        vr.append(v[rx])
-    vr.append(t)
-    return(vr)
+# def wrf2r(run,f,var,rs,minim=False,force=False):
+#     t=getElapsedDays(wopath(run,f))
+#     x,y=getCoords(wopath(run,f))
+#     dx=np.diff(x)[0]
+#     v=getWRF(run,f,var,vtype='az',force=force)
+#     rc=getRcoord(wopath(run,f))
+#     vr=[]
+#     for r in rs:
+#         assert(r>=np.min(rc) and r<= np.max(rc))
+#         rx=np.argmin( np.abs(r-rc))
+#         vr.append(v[rx])
+#     vr.append(t)
+#     return(vr)
 
-def getElapsedDays(run,f,rst=False):
-    fpath=wopath(run,f)
+def getElapsedDays(fpath,rst=False):
     ncd=Dataset(fpath)
     x=ncd.variables['Times'][:].data[0]
     x=[i.decode('UTF-8') for i in x]
@@ -289,19 +303,21 @@ def getElapsedDays(run,f,rst=False):
     days=dt.days+dt.seconds/(24*60*60)
     return(days)
 
-
 def getvmax(xrz):
     if xrz.ndim == 1: # reshape to 2d
-        #x=np.reshape(x,(1,x.shape[0],x.shape[1]))
         xrz=np.expand_dims(xrz,1)
-    xm=np.nanmax(xrz)
-    xmx=np.where(xrz == xm)
+    xrzs=xrz # copy for smoothing
+    x=np.arange(xrz.shape[0]) # x coord for smoothing
+    for z in range(xrz.shape[1]):
+        xrzs[:,z]=lowess(xrz[:,z], x, frac=0.04, it=1,return_sorted=False)
+    xm=np.nanmax(xrzs)
+    xmx=np.where(xrzs == xm)
     rmax=xmx[0][0]
     zmax=xmx[1][0]
     return(xm,rmax,zmax)
 
-def getCoords(runname,woname,corners=False,cc=True,force=False):  
-    fpath=wopath(runname,woname)
+def getCoords(fpath,corners=False,cc=True,force=False):  
+#     print('getCoords:'+fpath)
     nc = Dataset(fpath,'r')
     nx=nc.dimensions['west_east'].size
     ny=nc.dimensions['south_north'].size
@@ -319,8 +335,8 @@ def getCoords(runname,woname,corners=False,cc=True,force=False):
         lonx0,latx0=getWRF(fpath,'cc',force=force)
         lon0=x[lonx0] 
         lat0=y[latx0]
-        x=x+lon0
-        y=y+lat0
+        x=x-lon0
+        y=y-lat0
     return(x,y)
 
 def getHeightCoord(run,fname):
@@ -356,26 +372,6 @@ def wrfout2var3d(ncfname,var):
     v = unstagger(v)
     v= np.transpose(v,(-2,-1,0))
     return(v)
-
-# def unstagger_old(u):
-#     nd=u.ndim
-#     if nd==2: tr=(0,1)
-#     if nd==3: tr=(1,2,0)
-#     if nd==4: tr=(2,3,0,1)
-#     u=np.transpose(u,tr)
-#     if u.shape[0]==u.shape[1]:
-#         0 # do nothing
-#     elif u.shape[0]==u.shape[1]+1:
-#             u=u[:-1,:]
-#     elif u.shape[0]+1 == u.shape[1]:
-#             u=u[:,:-1]
-#     else:
-#         print('Strange dimensions:',u.shape)
-#     if nd==2: tr=(0,1)
-#     if nd==3: tr=(2,0,1)
-#     if nd==4: tr=(2,3,0,1)
-#     u=np.transpose(u,tr)
-#     return(u)
 
 def unstagger(u):
     nd=u.ndim
@@ -449,9 +445,6 @@ def azimAv(v,x0=-1,y0=-1):
     rbm=[]
     for n in range(len(rbins)):
         rx=np.where((r>rbins[n]) & (r<rbins[n]+dr))
-        #print(v.shape)
-        #print(v[rx[0],rx[1],:].shape)
-        #print((np.mean(v[rx[0],rx[1],:],axis=0)).shape)
         rbm.append(np.mean(v[rx[0],rx[1],:],axis=0))
     rbm=np.stack(rbm).astype(np.single)
     #rzout={'az':rbm, 'r':rbins, 'z':z[:-1]}

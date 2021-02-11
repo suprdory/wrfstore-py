@@ -23,11 +23,11 @@ def smooth(x, N):
 
 def smooth2d(x,N):
     #smooth by layer
-    if len(x.shape)==3:
-        xsmz=[convolve2d(x[:,:,z], np.ones((N,N))/(N*N),mode='same') for z in range(0,x.shape[2])]
+    if x.ndim==3:
+        xsmz=[convolve2d(x[:,:,z], np.ones((N,N))/(N*N),mode='same',boundary='symm') for z in range(0,x.shape[2])]
         xsm=np.stack(xsmz,axis=2)
     else:
-        xsm=convolve2d(x, np.ones((N,N))/(N*N),mode='same')
+        xsm=convolve2d(x, np.ones((N,N))/(N*N),mode='same',boundary='symm')
     return(xsm)
     
 def imshowxy(x,y,c,ax=0,**kwargs):
