@@ -262,16 +262,16 @@ def TH2T(TH,P):
     T=TH*(P/1000)**0.2854
     return(T)
 
-def wrf2max(fpath,var,minim=False,force=False):
+def wrf2max(fpath,var,minim=False,force=False,z=0):
     t=getElapsedDays(fpath)
     x,y=getCoords(fpath)
     dx=np.diff(x)[0]
-    v=getWRF(fpath,var,vtype='az',force=force)
+    v=getWRF(fpath,var,vtype='az',z=z,force=force)
     vmax,rmax,zmax=getvmax(v)
     if minim:
         vmax,rmax,zmax=getvmax(-v)
         vmax=-vmax
-    rmax=rmax*dx/1000    
+    rmax=(rmax+1)*dx/1000    
     return(vmax,rmax,zmax,t)
 
 # def wrf2r(run,f,var,rs,minim=False,force=False):
@@ -303,15 +303,20 @@ def getElapsedDays(fpath,rst=False):
     days=dt.days+dt.seconds/(24*60*60)
     return(days)
 
-def getvmax(xrz):
+def getvmax(xrz,smoothing=False):
     if xrz.ndim == 1: # reshape to 2d
         xrz=np.expand_dims(xrz,1)
     xrzs=xrz # copy for smoothing
     x=np.arange(xrz.shape[0]) # x coord for smoothing
-    for z in range(xrz.shape[1]):
-        xrzs[:,z]=lowess(xrz[:,z], x, frac=0.04, it=1,return_sorted=False)
-    xm=np.nanmax(xrzs)
-    xmx=np.where(xrzs == xm)
+    if smoothing:
+        for z in range(xrz.shape[1]):
+            xrzs[:,z]=lowess(xrz[:,z], x, frac=0.04, it=1,return_sorted=False)
+        xm=np.nanmax(xrzs)
+        xmx=np.where(xrzs == xm)
+    else:
+        xm=np.nanmax(xrz)
+        xmx=np.where(xrz == xm)
+
     rmax=xmx[0][0]
     zmax=xmx[1][0]
     return(xm,rmax,zmax)

@@ -38,13 +38,20 @@ def proc_precip(df):
     
 def get_row(fname,run,force):
     fpath=wrf.wopath(run,fname)
-    V10max,rV10max,zmax,t=wrf.wrf2max(fpath,'V',force=force)
+    V10max,rV10max,zmax,t=wrf.wrf2max(fpath,'V',z=0,force=force)
+    V2kmax,rV2kmax,zmax,t=wrf.wrf2max(fpath,'V',z=12,force=force)
+
     vt10max,rvt10max,zmax,t=wrf.wrf2max(fpath,'vt',force=force)
+    
+    vr10max,rvr10max,vrzmin,t=wrf.wrf2max(fpath,'vr',minim=True,force=force)
     Pmin,rPmin,Pzmin,t=wrf.wrf2max(fpath,'P',minim=True,force=force)
+
     trst=wrf.getElapsedDays(fpath,rst=True)
     tlf=np.round(t-trst,5)
     Pr=wrf.getWRF(fpath,'P','az',force=force)
-    Vt=wrf.getWRF(fpath,'vt','az',force=force)
+    vt=wrf.getWRF(fpath,'vt','az',force=force)
+    V=wrf.getWRF(fpath,'V','az',force=force)
+    
     r=wrf.getRcoord(fpath)
     tpgrid=wrf.getWRF(fpath,'tp',force=force)
     xc,yc=wrf.getCoords(fpath,cc=True)
@@ -53,9 +60,9 @@ def get_row(fname,run,force):
     dr=r[1]-r[0]
     Pbar=get_Pbar(Pr,r)
     row = {
-        'tlf':tlf,'t':t,'vt10max':vt10max,'rvt10max':rvt10max,\
-        'V10max':V10max,'rV10max':rV10max,\
-        'Pmin':Pmin,'Pr':Pr,'Pbar':Pbar,'r':r,'Vt10':Vt,\
+        'tlf':tlf,'t':t,'vt10max':vt10max,'rvt10max':rvt10max,'V2kmax':V2kmax,'rV2kmax':rV2kmax,\
+        'V10max':V10max,'rV10max':rV10max,'vr10max':vr10max,'rvr10max':rvr10max,\
+        'Pmin':Pmin,'Pr':Pr,'Pbar':Pbar,'r':r,'vt10':vt,'V10':V,\
         'tpgrid':tpgrid,'xc':xc,'yc':yc,'x0':x0,'y0':y0
     }
     return(row)
@@ -74,14 +81,10 @@ def create_delta_df(df):
     # calc rolling 2 row mean, builds upon pd rolling for numerical list elements 
         dfm=df.rolling(2).mean()
         missingkeys=(np.setdiff1d(df.keys(),dfm.keys())) # missing because rolling ignores arrays
-#         print(missingkeys)
         for k in missingkeys:
-#             print(k)
             dfk=df[k]#.reset_index(drop=True)
-#             print(dfk)
             dfkm=[np.nan]
             for i in range(len(dfk)-1):
-#                 print(i)
                 ar=np.array(np.mean((dfk[i],dfk[i+1]),0))
                 dfkm.append(ar)
             dfm[k]=dfkm
@@ -93,18 +96,33 @@ def create_delta_df(df):
     dfm['dPbardt']=dfd['Pbar']/(60*60)
     Vr=[]
     dPrdr=[]
-#     print(dfm)
+    dVrdr=[]
+    Vrmax=[]
+    rVrmax=[]
     dr=dfm['r'][1][1]-dfm['r'][1][0]
+    r0=dfm['r'][1][0]
     for i in range(len(dfm)):
-        Vr.append((100*dfm['dPbardt'][i])*(dfm['r'][i]*1000)/(2*dfm['Pr'][i]*100))
+        Vri=(100*dfm['dPbardt'][i])*(dfm['r'][i]*1000)/(2*dfm['Pr'][i]*100)
+        Vr.append(Vri)
         dPrdr.append(100*np.gradient(dfm['Pr'][i])/(dr*1000))
-    dfm['Vrcol']=Vr
-    dfm['dPrdr']=dPrdr
-    dfm['tp500']=dfd['tp500']
+        dVrdr.append(np.gradient(Vri)/(dr*1000))
+#         print(Vri)
+        if np.all(np.isfinite(Vri)):
+            Vrmaxi,rVrmaxi,zVrmaxi=wrf.getvmax(Vri)
+            rVrmax.append(rVrmaxi*(dr)+r0)
+            Vrmax.append(Vrmaxi) 
+        else:
+            rVrmax.append(np.nan)
+            Vrmax.append(np.nan) 
+    dfm['vrcol']=Vr
+    dfm['dPdr']=dPrdr
+    dfm['dvrdr']=dVrdr
+    dfm['vrcolmax']=Vrmax
+    dfm['rvrcolmax']=rVrmax
     return(dfm)
 
-def tabulate_df_ens(dflist):
-    dfn = pd.DataFrame(columns=['tlf','t','V10max','rV10max','Pmin','P','r','Vt10','Vrcol','dPdr','tp500'])
+def tabulate_df_ens(dflist,maxr=100):
+    rows=[]
     for df in dflist:
         for i,row in df[1:].iterrows():
         #     print(row['r'])
@@ -115,11 +133,26 @@ def tabulate_df_ens(dflist):
             rV10max=row['rV10max']
             Pmin=row['Pmin']
             tp500=row['tp500']
-        #     print('i=' + str(i))
-            for j,r in enumerate(rs[rs<100]):
-        #         print(j)
-                newrow = pd.Series({
-                    'tlf':tlf,'t':t,'V10max':V10max,'rV10max':rV10max,'Pmin':Pmin,'tp500':tp500,\
-                    'P':row['Pr'][j],'r':r,'Vt10':row['Vt10'][j],'Vrcol':row['Vrcol'][j],'dPdr':row['dPrdr'][j]})
-                dfn=dfn.append(newrow,ignore_index=True)
+            
+            vt10max=row['vt10max']
+            rvt10max=row['rvt10max']
+            vr10max=row['vr10max']
+            rvr10max=row['rvr10max']
+            vrcolmax=row['vrcolmax']
+            rvrcolmax=row['rvrcolmax']
+            
+            for j,r in enumerate(rs[rs<maxr]):
+                rows.append({
+                    'tlf':tlf,'t':t,'V10max':V10max,'rV10max':rV10max,\
+                    'Pmin':Pmin,'tp500':tp500, 'vt10max':vt10max,'rvt10max':rvt10max,\
+                    'vr10max':vr10max,'rvr10max':rvr10max,'vrcolmax':vrcolmax,\
+                    'rvrcolmax':rvrcolmax,\
+                    'P':row['Pr'][j],'r':r,'vt10':row['vt10'][j],\
+                    'vrcol':row['vrcol'][j],'dPdr':row['dPdr'][j],\
+                    'dvrdr':row['dvrdr'][j],\
+                    'V10':row['V10'][j],\
+                })
+                
+        
+    dfn=pd.DataFrame(rows)
     return dfn

@@ -1,6 +1,7 @@
-# .gitignore
+.gitignore
 __pycache__
 .ipynb_checkpoints
 *.png
-rundf/
-meeting/
+sync.ffs_lock
+arx/rundf
+dfs
