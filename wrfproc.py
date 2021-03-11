@@ -124,7 +124,7 @@ def create_delta_df(df):
 def tabulate_df_ens(dflist,maxr=100):
     rows=[]
     for df in dflist:
-        for i,row in df[1:].iterrows():
+        for i,row in df[0:].iterrows():
         #     print(row['r'])
             tlf=row['tlf']
             t=row['t']
