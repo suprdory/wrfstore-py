@@ -25,7 +25,7 @@ def getWRF(wopath,varin,vtype='raw',force=False,z=0):
             var=varin+'sfc'
         if varin in ['T']:
             var=varin+'2'
-        if varin in ['cc','tp','crr']:
+        if varin in ['cc','tp','crr','blh']:
             var=varin
     else:
         var=varin
@@ -102,13 +102,17 @@ def getWRF(wopath,varin,vtype='raw',force=False,z=0):
             elif z==0 and var=='crr':
                 ccr=wrfout2var2d(wopath,'RAINCV')
                 np.save(spath+ '.' + var + '.' + vtype, ccr)
-            
+            elif z==0 and var=='blh':
+                x=wrfout2var2d(wopath,'PBLH')
+                np.save(spath+ '.' + var + '.' + vtype, x)
             
             elif z==0 and var=='cc': # cyclone centre indices
 #                 print('centring')
-                P=getWRF(wopath,'P',z=0) #z=10=~950hPa
-                Ps=gu.smooth2d(P,15)
-                xmin,ymin=np.unravel_index(Ps.argmin(),Ps.shape)
+#                 P=getWRF(wopath,'P',z=10) #z=10=~950hPa
+#                 Ps=gu.smooth2d(P,15)
+#                 xmin,ymin=np.unravel_index(Ps.argmin(),Ps.shape)
+            
+                ymin,xmin=get_cyc_circ_centre(wopath)
                 # if xmin or ymin are on boundary return nans?
                 # assert(xmin not in [0 P.shape[0]])
                 # assert(ymin not in [0 P.shape[1]])
@@ -198,6 +202,63 @@ def getWRF(wopath,varin,vtype='raw',force=False,z=0):
             x=x[:,z-1]
             # pass # z index not required as performed on 1st call to raw
     return(x)
+
+def get_cyc_circ_centre(fpath):
+    #1 find location of pressure min
+    P=getWRF(fpath,'P',z=10)
+    xmin,ymin=np.unravel_index(P.argmin(),P.shape)
+
+    #2 get downscaled wind vectors within $range of pressure min
+    u=getWRF(fpath,'u',z=10) # above surface layer
+    v=getWRF(fpath,'v',z=10)
+#     cc=getWRF(fpath,'cc')
+    scl=10
+    nx,ny=u.shape
+    x=np.arange(0,nx,scl)
+    y=np.arange(0,ny,scl)
+    X, Y = np.meshgrid(x, y)
+    up=u[::scl,::scl]
+    vp=v[::scl,::scl]
+
+    rng=100
+    xlim=xmin-rng,xmin+rng
+    ylim=ymin-rng,ymin+rng+1
+    xx=np.logical_and(x>xlim[0], x<xlim[1])
+    yy=np.logical_and(y>ylim[0], y<ylim[1])
+
+    ix=np.ix_(xx,yy) 
+    Xc=X[ix]
+    Yc=Y[ix]
+    uc=up[ix]
+    vc=vp[ix]
+
+    # get circulation centre
+    y0s=np.arange(xlim[0],xlim[1],1)
+    x0s=np.arange(ylim[0],ylim[1],1)
+    dotperr_x=[]
+    for x0 in x0s:
+        dotperr_y=[]
+        for y0 in y0s:
+            dotperr_y.append(get_dotperr(x0,y0,Xc,Yc,uc,vc))
+        dotperr_x.append(dotperr_y)
+    dotperr=np.array(dotperr_x).T
+    ccy,ccx=np.unravel_index(dotperr.argmin(),dotperr.shape)
+    xmincc=x0s[ccx]
+    ymincc=y0s[ccy]
+    return(xmincc,ymincc)
+# helper funcs for finding circulation centre
+def get_relposvecs(x0,y0,xg,yg):
+    dx=xg-x0
+    dy=yg-y0
+    mag=(dx**2+dy**2)**0.5
+    return(dx/mag,dy/mag)
+def get_dotprod(x1,y1,x2,y2):
+    return(x1*x2+y1*y2)
+def get_dotperr(x0,y0,Xc,Yc,uc,vc):
+    dx,dy=get_relposvecs(x0,y0,Xc,Yc)
+    dotp=np.abs(get_dotprod(dx,dy,uc,vc))
+    sumdotp=np.nansum(dotp)
+    return(sumdotp)
 
 # # creates evenly spaced pressure grid for interpgrid2np func
 # def equalPgrid(P,n):
@@ -344,9 +405,9 @@ def getCoords(fpath,corners=False,cc=True,force=False):
         y=y-lat0
     return(x,y)
 
-def getHeightCoord(run,fname):
-    woname=wopath(run,fname)
-    nc = Dataset(woname,'r')
+def getHeightCoord(f):
+#     woname=wopath(run,fname)
+    nc = Dataset(f,'r')
     phb=nc.variables['PHB']
     z=np.mean(phb[0,:,:,:],axis=(1,2))/9.8
     nc.close()
